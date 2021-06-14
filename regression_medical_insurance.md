@@ -5,12 +5,26 @@ Denise O’Sullivan
 This notebook will explore what the best machine learning technique is
 to predict one’s medical insurance cost based on personal attributes.
 
+The outcome variable here will be charges and the predictor variables
+are:
+
+  - age
+  - body mass index (bmi)
+  - number of children
+  - smoker
+  - region
+  - sex
+
 **Data Source:** <https://www.kaggle.com/mirichoi0218/insurance>
 
 Techniques used here are:
 
-  - 
-  - 
+  - Decision Tree
+  - Random Forest
+  - Boosting
+  - XGBoost
+  - Bagging
+
 ### Load Libraries
 
 ``` r
@@ -144,7 +158,7 @@ predtree <- predict(tree, test_set)
 mean((test_set$charges - predtree)^2)
 ```
 
-    ## [1] 0.1495559
+    ## [1] 0.190241
 
 ``` r
 rf <- randomForest(charges~., data=train_set, ntree=5000,mtry=5, nodesize=20)
@@ -152,7 +166,7 @@ pred_rf <- predict(rf, test_set)
 mean((test_set$charges - pred_rf)^2)
 ```
 
-    ## [1] 0.1199915
+    ## [1] 0.1671743
 
 Next, random forest which performs better than the decision tree.
 
@@ -170,7 +184,7 @@ gbm_pred <- predict(gbm_model, test_set, best_iter)
 mean((test_set$charges - gbm_pred)^2)
 ```
 
-    ## [1] 0.2224562
+    ## [1] 0.286614
 
 Boosting is much worse than random forest\!
 
@@ -193,11 +207,11 @@ xgbcv<- xgb.cv(params = params, data = train_xgb[,-which(colnames(train_xgb)=='c
                 prediction = TRUE)
 ```
 
-    ## [03:42:34] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
-    ## [03:42:34] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
-    ## [03:42:34] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
-    ## [03:42:34] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
-    ## [03:42:34] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
+    ## [03:49:09] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
+    ## [03:49:09] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
+    ## [03:49:09] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
+    ## [03:49:09] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
+    ## [03:49:09] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
 
 ``` r
 best_iter = which.min(xgbcv$evaluation_log[, test_rmse_mean])
@@ -209,8 +223,8 @@ gbmfit <- xgboost(data=train_xgb[,-which(colnames(train_xgb)=='charges')],
                   objective="reg:linear")
 ```
 
-    ## [03:42:37] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
-    ## [03:42:37] WARNING: amalgamation/../src/learner.cc:573: 
+    ## [03:49:13] WARNING: amalgamation/../src/objective/regression_obj.cu:171: reg:linear is now deprecated in favor of reg:squarederror.
+    ## [03:49:13] WARNING: amalgamation/../src/learner.cc:573: 
     ## Parameters: { "silent" } might not be used.
     ## 
     ##   This may not be accurate due to some parameters are only used in language bindings but
@@ -222,7 +236,7 @@ pred_xgb <- predict(gbmfit, test_xgb[,-which(colnames(train_xgb)=='charges')])
 mean((test_xgb[,'charges'] - pred_xgb)^2)
 ```
 
-    ## [1] 0.9734975
+    ## [1] 0.9698421
 
 Very bad result compared to others - this would be because dcgMatrix
 removed categorical variables so need to dummy variable these.
@@ -233,6 +247,6 @@ bag_pred <- predict(bag, test_set)
 mean((test_set$charges - bag_pred)^2)
 ```
 
-    ## [1] 0.1351028
+    ## [1] 0.1704441
 
 Bagging is slightly better than random forest.
