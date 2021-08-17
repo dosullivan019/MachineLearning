@@ -1,8 +1,8 @@
 Classification of Mushrooms
 ================
 
-This notebook will explore what the best machine learning technique is
-to classify a mushroom as edible or poisonous.
+This notebook will explore what the best technique to classify a
+mushroom as edible or poisonous.
 
 **Data Source:** <https://www.kaggle.com/uciml/mushroom-classification>
 
@@ -12,7 +12,7 @@ Techniques used here are:
   - Random Forest
   - Logistic Regression
 
-<!-- end list -->
+### Load Libraries
 
 ``` r
 library(ggplot2)        # for plotting
@@ -24,7 +24,7 @@ library(pROC)
 ```
 
 ``` r
-mushrooms = read.csv('data/mushrooms.csv', stringsAsFactors = TRUE)
+mushrooms = read.csv('./data/mushrooms.csv', stringsAsFactors = TRUE)
 ```
 
 ### Data Exploration
@@ -44,7 +44,7 @@ ggplot(data = mushrooms, aes(x=class)) +
   theme(plot.title = element_text(hjust=0.5))
 ```
 
-![](classification_mushrooms_edible_poisonous_files/figure-gfm/plot%20outcome%20variable-1.png)<!-- -->
+![](mushroom_classification_files/figure-gfm/plot%20outcome%20variable-1.png)<!-- -->
 
 The outcome variable looks goods with an almost 50:50 split between
 edible and poisonous mushrooms. Now we will explore the predictor
@@ -82,7 +82,7 @@ mushrooms %>% pivot_longer(cols=!which(colnames(mushrooms)=='class')) %>%
   facet_wrap(~name)
 ```
 
-![](classification_mushrooms_edible_poisonous_files/figure-gfm/predictor%20variables-1.png)<!-- -->
+![](mushroom_classification_files/figure-gfm/predictor%20variables-1.png)<!-- -->
 
 ### Data Preparation
 
@@ -111,7 +111,7 @@ ggplot(data = test_set, aes(x=class)) +
   theme(plot.title = element_text(hjust=0.5))
 ```
 
-<img src="classification_mushrooms_edible_poisonous_files/figure-gfm/divide train test-1.png" width="50%" /><img src="classification_mushrooms_edible_poisonous_files/figure-gfm/divide train test-2.png" width="50%" />
+<img src="mushroom_classification_files/figure-gfm/divide train test-1.png" width="50%" /><img src="mushroom_classification_files/figure-gfm/divide train test-2.png" width="50%" />
 The split between edible and poisonous in the train set is very similiar
 to the entire dataset and the test set is balanced so we now continue
 with our classification.
@@ -132,7 +132,7 @@ plot(tree)
 text(tree)
 ```
 
-![](classification_mushrooms_edible_poisonous_files/figure-gfm/decision%20tree-1.png)<!-- -->
+![](mushroom_classification_files/figure-gfm/decision%20tree-1.png)<!-- -->
 
 ``` r
 tree_predict <- predict(tree, test_set)
@@ -173,7 +173,7 @@ rf$importance %>% as.data.frame() %>%
   geom_bar(stat='identity')
 ```
 
-![](classification_mushrooms_edible_poisonous_files/figure-gfm/plot%20rf%20importance-1.png)<!-- -->
+![](mushroom_classification_files/figure-gfm/plot%20rf%20importance-1.png)<!-- -->
 
 ### Excluding odor as a predictor variable
 
@@ -185,7 +185,7 @@ plot(tree)
 text(tree)
 ```
 
-![](classification_mushrooms_edible_poisonous_files/figure-gfm/decision%20tree%20excluding%20odor-1.png)<!-- -->
+![](mushroom_classification_files/figure-gfm/decision%20tree%20excluding%20odor-1.png)<!-- -->
 
 Now the decision tree has much more nodes which shows how dominant odor
 was in predicting edibility.
@@ -243,3 +243,20 @@ same as a decision tree.
 
 Can simple logistic regression do as well as the decision tree and
 random forest?
+
+``` r
+model <- glm( class ~ spore.print.color, data = train_set, family = binomial)
+
+probabilities_glm = predict(model, test_set, type='response')
+predictions_glm = ifelse(probabilities_glm > 0.5, 'p', 'e')
+
+roc_glm = roc(test_set$class, factor(predictions_glm, ordered = TRUE))
+auc_glm = auc(roc_glm)
+auc_glm
+```
+
+    ## Area under the curve: 0.8645
+
+Logistic regression is just as good - we can see that with just 1
+predictor variable decision trees and random forest perform the same as
+simple logistic regression.

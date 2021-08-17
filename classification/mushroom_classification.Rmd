@@ -1,0 +1,169 @@
+---
+title: "Classification of Mushrooms"
+output: github_document
+---
+
+This notebook will explore what the best technique to classify a mushroom as edible or poisonous.
+
+**Data Source:** https://www.kaggle.com/uciml/mushroom-classification
+
+Techniques used here are:
+
+  + Decision Trees
+  + Random Forest
+  + Logistic Regression
+  
+### Load Libraries
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = 'C:/Users/niecy/Documents/R_files/data-science-portfolio')
+```
+
+```{r load libraries, message=FALSE}
+library(ggplot2)        # for plotting
+library(dplyr)
+library(tidyr)
+library(rpart)          # decision tree
+library(randomForest)   # random forest
+library(pROC)
+```
+
+```{r read in data}
+mushrooms = read.csv('./data/mushrooms.csv', stringsAsFactors = TRUE)
+```
+### Data Exploration
+The dataset contains 8124 records and 23 variables. The outcome which we want to predict is class (edible or poison). The other 22 variables will be used as predictor variables. These relate to the characteristics of the mushroom, it's population and habitat type. When predicting a binary variable it's important to ensure the outcome variable is balanced and that one class is not dominant in the dataset. 
+```{r plot outcome variable, warning=FALSE}
+ggplot(data = mushrooms, aes(x=class)) +
+  geom_histogram(stat='count') +
+  labs(title = 'Distribution of outcome variable: Edible vs Poisonous') +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+The outcome variable looks goods with an almost 50:50 split between edible and poisonous mushrooms. Now we will explore the predictor variables and look for any missing data.
+```{r, count NA}
+# checking for NAs within the dataset
+sapply(mushrooms, function(x) sum(is.na(x))) # This line of code counts how many NA's in each column
+```
+There is no NAs in any column so we don't need to clean the data for this purpose.
+
+```{r, predictor variables, fig.show='hold', fig.width=12, fig.height=12, warning=FALSE}
+mushrooms %>% pivot_longer(cols=!which(colnames(mushrooms)=='class')) %>% 
+  ggplot() +
+  geom_histogram(aes(x=value, fill=class), stat='count') + 
+  facet_wrap(~name)
+```
+
+### Data Preparation
+To create a reliable model the dataset must be divided into a train and test set, 70% of the data will be used to train and 30% to test. It's also important that the outcome variable is balanced in both the train and test set.
+```{r divide train test, warning=FALSE, fig.show="hold", out.width="50%"}
+set.seed(1994)
+n_train <- floor(nrow(mushrooms) * 0.7)
+train_rows <- sample(nrow(mushrooms), n_train)
+train_set <- mushrooms[train_rows,]
+test_set <- mushrooms[-train_rows,]
+
+ggplot(data = train_set, aes(x=class)) +
+  geom_histogram(stat='count') +
+  labs(title = 'Training Set outcome variable: Edible vs Poisonous') +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust=0.5))
+
+ggplot(data = test_set, aes(x=class)) +
+  geom_histogram(stat='count') +
+  labs(title = 'Test Set outcome variable: Edible vs Poisonous') +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust=0.5))
+```
+The split between edible and poisonous in the train set is very similiar to the entire dataset and the test set is balanced so we now continue with our classification.
+
+### Classification
+Before we begin to classify we must decide on a model evaluation technique. In this case we have a balanced binary outcome so can use both the Receiver Operating Curve (ROC) and Area Under the Curve (AUC) to compare machine learning techniques.
+
+We will use the AUC and the model which has the highest AUC will be considered the best model.
+```{r, decision tree}
+tree <- rpart(class~., data=train_set, method="class")
+plot(tree)
+text(tree)
+```
+
+```{r, predict decision tree, message=FALSE, warning=FALSE}
+tree_predict <- predict(tree, test_set)
+# find which class has the highest probability
+max_prob_tree <- colnames(tree_predict)[max.col(tree_predict,ties.method="first")]
+roc_tree = roc(test_set$class, factor(max_prob_tree, ordered = TRUE))
+auc_tree = auc(roc_tree)
+auc_tree
+```
+The decision tree has 99% accuracy which is very high, normally this would indicate the model has been over-fitted but from looking at the decision tree it has been dominated by odor as the predictor variable. We saw in the data exploration that odor was correlated strongly with mushroom edibility.
+
+```{r, random forest, message=FALSE, warning=FALSE}
+rf <- randomForest(class~., data=train_set)
+predictions_rf = predict(rf, test_set)
+
+roc_rf = roc(test_set$class, factor(predictions_rf, ordered = TRUE))
+auc_rf = auc(roc_rf)
+auc_rf
+```
+Random Forest also gives 100% accuracy and in the plot below we can see that odor is again much more important than all other predictor variables.
+```{r plot rf importance}
+rf$importance %>% as.data.frame() %>%
+  tibble::rownames_to_column("variable") %>%
+  ggplot(aes(x=reorder(variable,-MeanDecreaseGini), y=MeanDecreaseGini)) +
+  geom_bar(stat='identity')
+```
+
+### Excluding odor as a predictor variable
+What if we excluded odor as a predictor variable?
+```{r, decision tree excluding odor}
+tree <- rpart(class~., data=train_set[,-which(colnames(train_set) == 'odor')], method="class")
+plot(tree)
+text(tree)
+```
+
+Now the decision tree has much more nodes which shows how dominant odor was in predicting edibility.
+```{r, message=FALSE, warning=FALSE}
+tree_predict <- predict(tree, test_set)
+# find which class has the highest probability
+max_prob_tree <- colnames(tree_predict)[max.col(tree_predict,ties.method="first")]
+roc_tree = roc(test_set$class, factor(max_prob_tree, ordered = TRUE))
+auc_tree = auc(roc_tree)
+auc_tree
+```
+After excluding odor as a predictor variable the model still has a very high accuracy of almost 99%.
+
+### Classifying with colour as the sole predictor
+So what if we wanted to predict if a mushroom was edible based solely on it's colour? Personally I would find this useful if I saw a mushroom in a field. I could just use the colour as an indicator of it was poisonous and wouldn't have to consider other mushroom characteristics.
+```{r, tree colour only, message=FALSE, warning=FALSE}
+tree <- rpart(class~., data=train_set[,c('class', 'spore.print.color')], method="class")
+tree_predict <- predict(tree, test_set)
+# find which class has the highest probability
+max_prob_tree <- colnames(tree_predict)[max.col(tree_predict,ties.method="first")]
+roc_tree = roc(test_set$class, factor(max_prob_tree, ordered = TRUE))
+auc_tree = auc(roc_tree)
+auc_tree
+```
+Now the accuracy has dropped to 86%, let's explore other techniques to check if they can do better than a decision tree.
+```{r, random forest colour only, message=FALSE, warning=FALSE}
+rf <- randomForest(class~., data=train_set[,c('class', 'spore.print.color')])
+predictions_rf = predict(rf, test_set)
+
+roc_rf = roc(test_set$class, factor(predictions_rf, ordered = TRUE))
+auc_rf = auc(roc_rf)
+auc_rf
+```
+The random forest is giving the same accuracy as the decision tree - as there is just 1 predictor variable the random forest is essentially the same as a decision tree.
+
+Can simple logistic regression do as well as the decision tree and random forest?
+```{r, logistic regression, message=FALSE, warning=FALSE}
+model <- glm( class ~ spore.print.color, data = train_set, family = binomial)
+
+probabilities_glm = predict(model, test_set, type='response')
+predictions_glm = ifelse(probabilities_glm > 0.5, 'p', 'e')
+
+roc_glm = roc(test_set$class, factor(predictions_glm, ordered = TRUE))
+auc_glm = auc(roc_glm)
+auc_glm
+```
+
+Logistic regression is just as good - we can see that with just 1 predictor variable decision trees and random forest perform the same as simple logistic regression.
