@@ -1,0 +1,184 @@
+---
+title: "Medical Insurance Regression"
+author: "Denise O'Sullivan"
+date: 
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = 'C:/Users/niecy/Documents/R_files/data-science-portfolio')
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This notebook will explore what the best machine learning technique is to predict one's medical insurance cost based on personal attributes.
+
+The outcome variable here will be charges and the predictor variables are:
+
+  + age
+  + body mass index (bmi)
+  + number of children
+  + smoker
+  + region
+  + sex
+
+**Data Source:** https://www.kaggle.com/mirichoi0218/insurance
+
+Techniques used here are:
+
+  + Decision Tree
+  + Random Forest
+  + Boosting
+  + XGBoost
+  + Bagging
+  
+### Load Libraries
+```{r load libraries, message=FALSE}
+library(ggplot2)        # for plotting
+library(corrplot)       # for correlation matrix
+library(dplyr)
+library(tidyr)
+library(rpart)          # decision tree
+library(randomForest)   # random forest
+library(gbm)
+library(xgboost)
+library(ipred)
+```
+
+```{r}
+insurance = read.csv('https://raw.githubusercontent.com/stedy/Machine-Learning-with-R-datasets/master/insurance.csv',
+                     stringsAsFactors = TRUE)
+```
+
+### Data Exploration
+```{r, plot outcome variable, message=FALSE}
+ggplot(data = insurance, aes(x=charges)) +
+  geom_histogram() +
+  labs(title = 'Distribution of outcome variable: Medical Charges') +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+The outcome variable is right skewed.
+
+```{r, check NA}
+sapply(insurance, function(x) sum(is.na(x)))
+```
+
+No NA's so don't to clean the data for this.
+
+```{r, }
+select_if(insurance, is.numeric) %>% cor()
+```
+None of the numeric variables are highly correlated with charges.
+
+```{r, plotting numeric variables}
+select_if(insurance, is.numeric) %>% 
+  gather() %>%
+  ggplot() +
+  geom_histogram(aes(x=value), bins=10) + 
+  facet_wrap(~key, scale='free')
+```
+
+bmi is normally distributed whereas all other variables are right skewed. The majority of people are in their 20s and have no children.
+
+```{r, plot categorical variables, warning=FALSE}
+select_if(insurance, is.factor) %>% 
+  gather() %>%
+  ggplot() +
+  geom_histogram(aes(x=value), stat='count') + 
+  facet_wrap(~key, scale='free')
+```
+
+There is an equal amount of males and females and the distribution of region is also quite evenly divided. The majority of people are non-smokers.
+
+### Data Preparation
+Now the data needs to be split into a train and test set before training the model. Training dataset will be made of 70% of the data and the other 30% will be used to test the model.
+```{r, train and test, message=FALSE}
+scaled_insurance = insurance %>% mutate(charges=scale(charges))
+n_train <- floor(nrow(insurance) * 0.7)
+train_rows <- sample(nrow(insurance), n_train)
+train_set <- scaled_insurance[train_rows,]
+test_set <- scaled_insurance[-train_rows,]
+
+ggplot(data = train_set, aes(x=charges)) +
+  geom_histogram() +
+  labs(title = 'Training Set outcome variable: Medical Charges (Scaled)') +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust=0.5))
+
+ggplot(data = test_set, aes(x=charges)) +
+  geom_histogram() +
+  labs(title = 'Test Set outcome variable: Medical Charges (Scaled)') +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+The metric we will use to measure the accuracy of the model is Mean Squared Prediction Error (MSPE). We want the MSPE to be low as this would indicate there is a small difference between the predicted values and the actual values.
+
+First we will look at a decision tree as a modelling technique.
+```{r, decision tree}
+tree <- rpart(charges~., data=train_set)
+plot(tree)
+text(tree)
+```
+
+```{r, tree predictions}
+predtree <- predict(tree, test_set)
+mean((test_set$charges - predtree)^2)
+```
+
+```{r, random forest}
+rf <- randomForest(charges~., data=train_set, ntree=5000,mtry=5, nodesize=20)
+pred_rf <- predict(rf, test_set)
+mean((test_set$charges - pred_rf)^2)
+```
+Next, random forest which performs better than the decision tree.
+
+```{r, boosting}
+gbm_model<- gbm(charges~., data=train_set, distribution="gaussian",
+               n.trees=10000, cv.folds = 10)
+
+best_iter <- gbm.perf(gbm_model, method="cv")
+
+gbm_pred <- predict(gbm_model, test_set, best_iter)
+mean((test_set$charges - gbm_pred)^2)
+```
+
+Boosting is much worse than random forest!
+
+```{r, xgb boost, warning=FALSE}
+# XG BOost
+xgb_data = as(as.matrix(scaled_insurance), "dgCMatrix")
+
+train_xgb <- xgb_data[train_rows,]
+test_xgb <- xgb_data[-train_rows,]
+params <- list("objective" = "reg:squarederror",
+               "eval_metric" = "rmse")
+
+# Cross validation to find the best iterator
+xgbcv<- xgb.cv(params = params, data = train_xgb[,-which(colnames(train_xgb)=='charges')],
+                label=train_xgb[,'charges'],
+                nrounds = 300,
+                nfold=5,
+                print_every_n = 20,
+                verbose=FALSE, 
+                prediction = TRUE)
+best_iter = which.min(xgbcv$evaluation_log[, test_rmse_mean])
+gbmfit <- xgboost(data=train_xgb[,-which(colnames(train_xgb)=='charges')], 
+                  silent=0,
+                  label = train_xgb[,'charges'], 
+                  nrounds=best_iter,
+                  verbose=0, 
+                  objective="reg:squarederror")
+pred_xgb <- predict(gbmfit, test_xgb[,-which(colnames(train_xgb)=='charges')])
+mean((test_xgb[,'charges'] - pred_xgb)^2)
+```
+Very bad result compared to others - this would be because dcgMatrix removed categorical variables so need to dummy variable these.
+
+```{r, bagging}
+bag <- bagging(charges~.,data=train_set,coob=TRUE,nbagg=700)
+bag_pred <- predict(bag, test_set)
+mean((test_set$charges - bag_pred)^2)
+```
+
+Bagging is slightly better than random forest.
